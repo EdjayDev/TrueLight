@@ -5,7 +5,6 @@ signal fuel_changed(new_fuel: float)
 
 @onready var player_sprite: Sprite2D = $player_sprite
 
-
 const SPEED = 100.0
 var animation_direction : String = "down"
 var last_animation : String = ""
@@ -26,42 +25,46 @@ var base_damage: int = 25
 var current_damage: int = 25
 
 var breadcrumb_timer: float = 0.0
-const BREADCRUMB_INTERVAL = 0.5 # Drop a breadcrumb every 0.5s
+const BREADCRUMB_INTERVAL = 0.5
 
 @onready var light: PointLight2D = $PointLight2D
 
 func _ready() -> void:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("player")
+
+	# ✅ Camera smoothing
+	camera.enabled = true
+	camera.position_smoothing_enabled = true
+	camera.position_smoothing_speed = 6.0 # tweak (3–10 range)
+
 	var health = get_node_or_null("HealthComponent")
 	if health:
 		health.health_depleted.connect(_on_died)
 		health.health_changed.connect(_on_health_changed)
 
 func _process(delta: float) -> void:
-	# Light fuel depletion
+	# Fuel depletion
 	if fuel > 0:
-		fuel -= delta * 2.0 # Deplete over time
+		fuel -= delta * 2.0
 		fuel = max(0, fuel)
 		fuel_changed.emit(fuel)
 
-	
-	# Update light energy and scale based on fuel
+	# Light behavior
 	if light:
 		var fuel_ratio = fuel / max_fuel
 		light.energy = 0.5 + (fuel_ratio * 0.5)
 		light.texture_scale = 1.0 + (fuel_ratio * 1.5)
 		
-		# Flicker effect when low
 		if fuel < 20:
 			flicker_timer += delta * 10
 			light.energy *= 0.8 + (sin(flicker_timer) * 0.2)
 
-	# Attack boost timer
+	# Attack boost
 	if attack_boost_timer > 0:
 		attack_boost_timer -= delta
 		current_damage = base_damage * 2
-		player_sprite.modulate = Color(1.5, 0.5, 0.5) # Glowing red
+		player_sprite.modulate = Color(1.5, 0.5, 0.5)
 	else:
 		current_damage = base_damage
 		if player_sprite.modulate != Color.WHITE:
@@ -73,10 +76,13 @@ func _process(delta: float) -> void:
 		breadcrumb_timer = 0.0
 		BreadcrumbManager.add_breadcrumb(global_position)
 
+	# Camera shake (works with smoothing)
 	if shake_duration > 0:
-
 		shake_duration -= delta
-		camera.offset = Vector2(randf_range(-shake_intensity, shake_intensity), randf_range(-shake_intensity, shake_intensity))
+		camera.offset = Vector2(
+			randf_range(-shake_intensity, shake_intensity),
+			randf_range(-shake_intensity, shake_intensity)
+		)
 	else:
 		camera.offset = Vector2.ZERO
 
@@ -85,21 +91,15 @@ func apply_shake(intensity: float, duration: float) -> void:
 	shake_duration = duration
 
 func _on_health_changed(_old: float, new_health: float) -> void:
-	# Flash effect
 	apply_shake(3.0, 0.3)
 	
-	# Red hit flash
 	var tween = create_tween()
 	player_sprite.modulate = Color.RED
 	tween.tween_property(player_sprite, "modulate", Color.WHITE, 0.2)
 	
-	# Light flickering increases when low health
 	var health = get_node_or_null("HealthComponent")
-	if health:
-		if health.health < 30:
-			# Panic flicker
-			flicker_timer += 4.5
-
+	if health and health.health < 30:
+		flicker_timer += 4.5
 
 func _on_died() -> void:
 	print("Player died!")
@@ -151,10 +151,9 @@ func attack() -> void:
 	update_animation()
 	await player_animation.animation_finished
 	state = "idle"
-	last_animation = "" # Force update
+	last_animation = ""
 
 func deal_damage() -> void:
-	# Called by animation track
 	var attack_pos = global_position
 	if animation_direction == "side":
 		attack_pos += Vector2(12 * player_sprite.scale.x * -1, 0)
